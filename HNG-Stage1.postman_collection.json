@@ -1,0 +1,185 @@
+{
+  "info": {
+    "_postman_id": "7b2f4d89-c1a2-4684-868c-f819a3145dc1",
+    "name": "HNG-Stage1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "46750023"
+  },
+  "item": [
+    {
+      "name": "New Request",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "localhost:3000/api/profile?name=slyvia",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "profile"
+          ],
+          "query": [
+            {
+              "key": "name",
+              "value": "slyvia",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "response": [
+        {
+          "status": "success",
+          "data": {
+              "id": "019d9656-622c-74a8-81ae-ec654a9148a5",
+              "name": "slyvia",
+              "gender": "female",
+              "gender_probability": 0.99,
+              "sample_size": 573,
+              "age": 68,
+              "age_group": "senior",
+              "country_id": "UG",
+              "country_probability": 0.1854328281075481,
+              "created_at": "2026-04-16T12:48:56.846Z"
+            }
+          }
+      ]
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:3000/api/profile/019d9656-622c-74a8-81ae-ec654a9148a5",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "profile",
+            "019d9656-622c-74a8-81ae-ec654a9148a5"
+          ]
+        }
+      },
+      "response": [
+        {
+          "status": "success",
+          "data": {
+              "id": "019d9656-622c-74a8-81ae-ec654a9148a5",
+              "name": "slyvia",
+              "gender": "female",
+              "gender_probability": 0.99,
+              "sample_size": 573,
+              "age": 68,
+              "age_group": "senior",
+              "country_id": "UG",
+              "country_probability": 0.1854328281075481,
+              "created_at": "2026-04-16T12:48:56.846Z"
+            }
+          }
+      ]
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "localhost:3000/api/profile/019d9608-4c88-744a-ac2e-124a049d3b70",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "profile",
+            "019d9608-4c88-744a-ac2e-124a049d3b70"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:3000/api/profiles",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "profiles"
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "New Request",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "localhost:3000/api/profiles",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "api",
+                "profiles"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": null,
+          "header": [
+            {
+              "key": "X-Powered-By",
+              "value": "Express"
+            },
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Content-Length",
+              "value": "249"
+            },
+            {
+              "key": "ETag",
+              "value": "W/\"f9-kYmz8RpER6tpMKVxV+iltcJfgos\""
+            },
+            {
+              "key": "Date",
+              "value": "Thu, 16 Apr 2026 12:56:29 GMT"
+            },
+            {
+              "key": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "key": "Keep-Alive",
+              "value": "timeout=5"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"status\": \"success\",\n    \"count\": 2,\n    \"data\": [\n        {\n            \"id\": \"019d9628-32c0-703e-9fc0-c17380f01217\",\n            \"name\": \"john\",\n            \"gender\": \"male\",\n            \"age\": 75,\n            \"country_id\": \"NG\"\n        },\n        {\n            \"id\": \"019d9656-622c-74a8-81ae-ec654a9148a5\",\n            \"name\": \"slyvia\",\n            \"gender\": \"female\",\n            \"age\": 68,\n            \"country_id\": \"UG\"\n        }\n    ]\n}"
+        }
+      ]
+    }
+  ]
+}
