@@ -2,12 +2,13 @@ const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
 const connectionString = process.env.DATABASE_URL;
-const isProduction = process.env.NODE_ENV === 'production';
 
 let sequelize;
 
-// If we have a URL AND we are in production, use SSL
-if (connectionString && isProduction) {
+// If DATABASE_URL exists, we are likely on Neon/Railway/Render
+if (connectionString) {
+    console.log('🚀 Production detected via DATABASE_URL → Connecting with SSL');
+    
     sequelize = new Sequelize(connectionString.trim(), {
         dialect: 'postgres',
         dialectOptions: {
@@ -19,8 +20,8 @@ if (connectionString && isProduction) {
         logging: false
     });
 } else {
-    // Local development (even if DATABASE_URL exists in .env)
-    console.log('🚀 Running in LOCAL mode (No SSL)');
+    // Truly local development (no DATABASE_URL in .env)
+    console.log('💻 No DATABASE_URL found → Using local fallback');
     
     sequelize = new Sequelize(
         process.env.DB_NAME || 'Stage1-db',
@@ -29,8 +30,7 @@ if (connectionString && isProduction) {
         {
             host: process.env.DB_HOST || 'localhost',
             port: process.env.DB_PORT || 5432,
-            dialect: 'postgres',
-            logging: console.log,
+            dialect: 'postgres'
         }
     );
 }
