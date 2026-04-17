@@ -13,7 +13,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
-app.post('/api/profile', async (req, res) => {
+app.post('/api/profiles', async (req, res) => {
     try {
         const { name } = req.query;
 
@@ -104,7 +104,7 @@ app.post('/api/profile', async (req, res) => {
     }
 });
 
-app.get('/api/profile/:id', async (req, res) => {
+app.get('/api/profiles/:id', async (req, res) => {
     try {
         const profile = await Profile.findByPk(req.params.id);
         if (!profile) {
@@ -149,7 +149,7 @@ app.get('/api/profiles', async (req, res) => {
     }
 });
 
-app.delete('/api/profile/:id', async (req, res) => {
+app.delete('/api/profiles/:id', async (req, res) => {
     try {
         const deletedCount = await Profile.destroy({ where: { id: req.params.id } });
         if (deletedCount === 0) {
