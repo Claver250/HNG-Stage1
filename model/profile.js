@@ -31,7 +31,7 @@ const Profile = sequelize.define('Profile', {
         }
     },
     gender_probability: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.STRING,
         allowNull: true,
         validate: {
             min: 0,
