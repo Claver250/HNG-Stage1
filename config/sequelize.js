@@ -2,39 +2,53 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-console.log('=== Railway Debug Info ===');
-console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-console.log('DB_HOST:', process.env.DB_HOST);
-console.log('All env keys:', Object.keys(process.env).filter(k => k.includes('DB') || k.includes('DATABASE')));
+const connectionString = process.env.DATABASE_URL?.trim();
 
-let sequelize;
-
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres://')) {
-    console.log('✅ Using DATABASE_URL from Railway');
-    sequelize = new Sequelize(process.env.DATABASE_URL, {
-        dialect: 'postgres',
-        dialectOptions: {
-            ssl: {
-                require: true,
-                rejectUnauthorized: false
-            }
-        },
-        logging: false,
-        pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
-    });
-} else {
-    console.log('⚠️  Falling back to individual DB variables (local mode)');
-    sequelize = new Sequelize(
-        process.env.DB_NAME,
-        process.env.DB_USER,
-        process.env.DB_PASS || process.env.DB_PASSWORD,
+if (!connectionString) {
+    console.warn('⚠️ DATABASE_URL is missing → Running in LOCAL development mode.');
+    
+    // Local development fallback (using individual variables)
+    const sequelize = new Sequelize(
+        process.env.DB_NAME || 'Stage1-db',
+        process.env.DB_USER || 'postgres',
+        process.env.DB_PASSWORD || process.env.DB_PASS || '',
         {
             host: process.env.DB_HOST || 'localhost',
-            port: parseInt(process.env.DB_PORT) || 5432,
+            port: process.env.DB_PORT || 5432,
             dialect: 'postgres',
-            logging: false,
+            logging: process.env.NODE_ENV === 'development' ? console.log : false,
+            pool: {
+                max: 5,
+                min: 0,
+                acquire: 30000,
+                idle: 10000
+            }
         }
     );
+
+    module.exports = sequelize;
+    return; // Stop execution here
 }
+
+// === Production / Vercel mode (DATABASE_URL exists) ===
+const sequelize = new Sequelize(connectionString, {
+    dialect: 'postgres',
+    dialectOptions: {
+        ssl: {
+            require: true,
+            rejectUnauthorized: false
+        }
+    },
+    pool: {
+        max: 3,           // Small pool is safer on Vercel serverless
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+    },
+    logging: false,
+    retry: {
+        max: 2
+    }
+});
 
 module.exports = sequelize;
