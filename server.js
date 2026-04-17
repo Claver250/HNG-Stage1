@@ -14,7 +14,7 @@ app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
 app.post('/api/profiles', async (req, res) => {
     try {
-        const { name } = req.query;
+        const { name } = req.body;
 
         if (!name || typeof name !== 'string' || name.trim() === '') {
             return res.status(400).json({ status: "error", message: "A valid name is required" });

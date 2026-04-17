@@ -21,13 +21,10 @@
             "api",
             "profile"
           ],
-          "query": [
-            {
-              "key": "name",
-              "value": "slyvia",
-              "type": "text"
-            }
-          ]
+          "body": {
+            "mode": "raw",
+            "raw": "{\n    \"name\": \"slyvia\"\n}"
+          }
         }
       },
       "response": [
