@@ -2,14 +2,15 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-// Debug: Log what we actually have (remove after it works)
+console.log('=== Railway Debug Info ===');
 console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
 console.log('DB_HOST:', process.env.DB_HOST);
+console.log('All env keys:', Object.keys(process.env).filter(k => k.includes('DB') || k.includes('DATABASE')));
 
 let sequelize;
 
-if (process.env.DATABASE_URL) {
-    // Railway / Production - Use the connection string
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgres://')) {
+    console.log('✅ Using DATABASE_URL from Railway');
     sequelize = new Sequelize(process.env.DATABASE_URL, {
         dialect: 'postgres',
         dialectOptions: {
@@ -19,24 +20,19 @@ if (process.env.DATABASE_URL) {
             }
         },
         logging: false,
-        pool: {
-            max: 10,
-            min: 0,
-            acquire: 30000,
-            idle: 10000
-        }
+        pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
     });
 } else {
-    // Local development fallback
+    console.log('⚠️  Falling back to individual DB variables (local mode)');
     sequelize = new Sequelize(
-        process.env.DB_NAME || 'stage1_db',
-        process.env.DB_USER || 'postgres',
-        process.env.DB_PASSWORD || process.env.DB_PASS,
+        process.env.DB_NAME,
+        process.env.DB_USER,
+        process.env.DB_PASS || process.env.DB_PASSWORD,
         {
             host: process.env.DB_HOST || 'localhost',
             port: parseInt(process.env.DB_PORT) || 5432,
             dialect: 'postgres',
-            logging: process.env.NODE_ENV === 'development',
+            logging: false,
         }
     );
 }
