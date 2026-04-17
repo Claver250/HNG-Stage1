@@ -4,7 +4,6 @@ const { v7: uuidv7 } = require('uuid');
 const cors = require('cors');
 const sequelize = require('./config/sequelize');
 const Profile = require('./model/profile'); 
-const { count } = require('node:console');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;

@@ -1,7 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
 const { v7: uuidv7, validate } = require('uuid');
-const { before } = require('node:test');
 
 const Profile = sequelize.define('Profile', {
     id: {
