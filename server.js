@@ -161,4 +161,14 @@ app.delete('/api/profiles/:id', async (req, res) => {
     }
 });
 
-module.exports = app;
+
+app.listen(PORT, '0.0.0.0', async () => {
+    try {
+        await sequelize.authenticate();
+        console.log('Database connected.');
+        await sequelize.sync({ alter: true });
+        console.log(`Server is running on port ${PORT}`);
+    } catch (error) {
+        console.error('Unable to connect to the database:', error);
+    }
+});
