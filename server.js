@@ -5,6 +5,9 @@ const cors = require('cors');
 const sequelize = require('./config/sequelize');
 const Profile = require('./model/profile'); 
 const { count } = require('node:console');
+require('dotenv').config();
+
+const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.use(express.json());
@@ -160,12 +163,12 @@ app.delete('/api/profile/:id', async (req, res) => {
 });
 
 
-app.listen(3000, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
     try {
         await sequelize.authenticate();
-        console.log('Database connection has been established successfully.');
-        await sequelize.sync({alter: true}); // Sync models with DB, alter tables if needed
-        console.log('Server is running on port 3000');
+        console.log('Database connected.');
+        await sequelize.sync({ alter: true });
+        console.log(`Server is running on port ${PORT}`);
     } catch (error) {
         console.error('Unable to connect to the database:', error);
     }
