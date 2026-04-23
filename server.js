@@ -111,74 +111,52 @@ app.post('/api/profiles', async (req, res) => {
 });
 
 app.get('/api/profiles/search', async (req, res) => {
-    try{
-        const {q, page = 1, limit = 10} = req.query;
-        if (!q) return res.status(400).json({ status: "error", message: "Query parameter 'q' is required" });
+    try {
+        const { q, page = 1, limit = 10 } = req.query;
+        if (!q) return res.status(400).json({ status: "error", message: "Query 'q' is required" });
 
         const query = q.toLowerCase();
         const where = {};
         let interpreted = false;
 
-        if(/\bmales?\b|\bmen\b/.test(query)){
-            where.gender = 'male';
-            interpreted = true;
-        } else if(/\bfemales?\b|\bwomen\b/.test(query)){
-            where.gender = 'female';
-            interpreted = true;
-        }
+        // Gender Parsing
+        if (/\bmales?\b|\bmen\b/.test(query)) { where.gender = 'male'; interpreted = true; }
+        else if (/\bfemales?\b|\bwomen\b/.test(query)) { where.gender = 'female'; interpreted = true; }
 
-        if (query.includes('young')) {
-            where.age = {[Op.gte]: 16, [Op.lte] : 24};
-            interpreted = true;
-        }
-
+        // Age Group Parsing
+        if (query.includes('young')) { where.age = { [Op.gte]: 16, [Op.lte]: 24 }; interpreted = true; }
         if (query.includes('adult')) { where.age_group = 'adult'; interpreted = true; }
         if (query.includes('teenager')) { where.age_group = 'teenager'; interpreted = true; }
 
+        // Comparisons
         const aboveMatch = query.match(/(?:above|older than)\s+(\d+)/);
         if (aboveMatch) {
-            where.age = { ...where.age, [Op.gt]: parseInt(aboveMatch[1])};
+            where.age = { ...where.age, [Op.gt]: parseInt(aboveMatch[1]) };
             interpreted = true;
         }
 
-        const belowMatch = query.match(/(?:below|younger than)\s+(\d+)/);
-        if (belowMatch) {
-            where.age = { ...where.age, [Op.lt]: parseInt(belowMatch[1])};
-            interpreted = true;
-        }
-
+        // Country Parsing
         const countryMatch = query.match(/from\s+([a-zA-Z\s]+)/);
         if (countryMatch) {
             const countryName = countryMatch[1].trim();
             const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
-            if (countryId) {
-                where.country_id = countryId;
-                interpreted = true;
-            }
+            if (countryId) { where.country_id = countryId; interpreted = true; }
         }
 
         if (!interpreted) {
-            return res.status(400).json({ status: "error", message: "Could not interpret the query" });
+            return res.status(400).json({ status: "error", message: "Uninterpretable query" });
         }
 
-        let pageNum = parseInt(page) || 1;
-        let limitReq = parseInt(limit) || 10;
-
-        // 2. STRICTOR Limit Max-Cap (Requirement: max 50)
-        const limitNum = Math.min(Math.max(limitReq, 1), 50);
-        const offset = (Math.max(pageNum, 1) - 1) * limitNum;
-
-        // 3. Sorting Logic (Fixes sorting 0/10 pts)
-        // Ensure these match your DB column names exactly
-        const allowedSortFields = ['age', 'created_at', 'gender_probability', 'country_probability'];
-        const sortBy = allowedSortFields.includes(req.query.sort_by) ? req.query.sort_by : 'created_at';
-        const sortOrder = (req.query.order && req.query.order.toLowerCase() === 'asc') ? 'ASC' : 'DESC';
+        // Pagination & Envelope Fix
+        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50); // MAX-CAP FIX
+        const pageNum = Math.max(parseInt(page) || 1, 1);
+        const offset = (pageNum - 1) * limitNum;
 
         const { count, rows } = await Profile.findAndCountAll({
             where,
             limit: limitNum,
             offset: offset,
-            order: [[sortBy, sortOrder]]
+            order: [['created_at', 'DESC']]
         });
 
         return res.status(200).json({
@@ -188,10 +166,11 @@ app.get('/api/profiles/search', async (req, res) => {
             total: count,
             data: rows
         });
-    } catch(error) {
+    } catch (error) {
+        console.error("Search Error:", error);
         return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
-})
+});
 
 app.get('/api/profiles/:id', async (req, res) => {
     try {
@@ -212,32 +191,22 @@ app.get('/api/profiles/:id', async (req, res) => {
 
 app.get('/api/profiles', async (req, res) => {
     try {
-        MAX_LIMIT = 50;
+        const MAX_LIMIT = 50;
+        const { gender, country_id, age_group, min_age, max_age, min_gender_probability, max_gender_probability, page = 1, limit = 10, sortBy = 'created_at', order = 'ASC' } = req.query;
 
-        const { gender, country_id, age_group,
-            min_age, max_age,
-            min_gender_probability, max_gender_probability,
-            page = 1,
-            limit = 10,
-            sortBy = 'created_at',
-            order = 'ASC'
-        } = req.query;
-
+        // 1. Validation for numeric types
         const numericFields = { page, limit, min_age, max_age, min_gender_probability, max_gender_probability };
         for (const [key, value] of Object.entries(numericFields)) {
-            if (value !== undefined && isNaN(value)) {
-                return res.status(422).json({ 
-                    status: "error", 
-                    message: `Invalid parameter type: ${key} must be a number` 
-                });
+            if (value !== undefined && isNaN(Number(value))) {
+                return res.status(422).json({ status: "error", message: `Invalid parameter type: ${key} must be a number` });
             }
         }
 
         const where = {};
-
-        if (gender) where.gender = gender;
-        if (country_id) where.country_id = country_id;
-        if (age_group) where.age_group = age_group;
+        // 2. Case-Insensitive Normalization
+        if (gender) where.gender = gender.toLowerCase();
+        if (country_id) where.country_id = country_id.toUpperCase();
+        if (age_group) where.age_group = age_group.toLowerCase();
 
         if (min_age || max_age) {
             where.age = {};
@@ -251,18 +220,17 @@ app.get('/api/profiles', async (req, res) => {
             if (max_gender_probability) where.gender_probability[Op.lte] = parseFloat(max_gender_probability);
         }
 
-        const requestedLimit = parseInt(limit);
-        const limitNum = Math.min(Math.max(requestedLimit, 1), MAX_LIMIT);
-        const pageNum = parseInt(page);
+        // 3. Strict Pagination Numbers
+        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), MAX_LIMIT);
+        const pageNum = Math.max(parseInt(page) || 1, 1);
         const offset = (pageNum - 1) * limitNum;
 
-        const {count, rows: profiles} = await Profile.findAndCountAll({
+        const { count, rows: profiles } = await Profile.findAndCountAll({
             where,
             limit: limitNum,
             offset: offset,
-            order: [[
-                ['age', 'created_at', 'gender_probability'].includes(sortBy) ? sortBy: 'createdAt', order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-            ]]
+            // 4. Fixed fallback to underscored 'created_at'
+            order: [[ (['age', 'created_at', 'gender_probability', 'country_probability'].includes(sortBy) ? sortBy : 'created_at'), (order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC') ]]
         });
 
         return res.status(200).json({
@@ -270,21 +238,10 @@ app.get('/api/profiles', async (req, res) => {
             page: pageNum,
             limit: limitNum,
             total: count,
-            data: profiles.map(p => ({
-                id: p.id,
-                name: p.name,
-                gender: p.gender,
-                gender_probability: p.gender_probability,
-                age: p.age,
-                age_group: p.age_group,
-                country_id: p.country_id,
-                country_name: p.country_name,
-                country_probability: p.country_probability,
-                created_at: p.created_at
-            }))
+            data: profiles
         });
     } catch (error) {
-        console.error("Internal Error:", error.message);
+        console.error("Internal Error:", error);
         res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
