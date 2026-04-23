@@ -17,7 +17,7 @@ if (connectionString && connectionString.trim() !== "") {
                 sslmode: 'require'
             }
         },
-        logging: false
+        logging: console.log
     });
 } else if (process.env.DB_NAME) {
     // This part only runs if DATABASE_URL is missing but you provided individual DB variables
