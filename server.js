@@ -64,8 +64,8 @@ app.get('/api/profiles/search', async (req, res) => {
 
         return res.status(200).json({
             status: "success",
-            page: pageNum,
-            limit: limitNum,
+            page: parseInt(page),
+            limit: parseInt(limit),
             total: count,
             data: rows
         });
@@ -122,6 +122,16 @@ app.get('/api/profiles', async (req, res) => {
     } catch (error) {
         console.error("List Error:", error.stack);
         res.status(500).json({ status: "error", message: "Internal Server Error" });
+    }
+});
+
+app.get('/api/profiles/:id([0-9a-fA-F-]{36})', async (req, res) => {
+    try {
+        const profile = await Profile.findByPk(req.params.id);
+        if (!profile) return res.status(404).json({ status: "error", message: "Profile not found" });
+        return res.status(200).json({ status: "success", data: profile });
+    } catch (error) {
+        return res.status(400).json({ status: "error", message: "Invalid UUID format" });
     }
 });
 
