@@ -1,238 +1,172 @@
 const express = require('express');
-const axios = require('axios');
 const cors = require('cors');
 const { Op } = require('sequelize');
-const ISOcountries = require('i18n-iso-countries');
-ISOcountries.registerLocale(require("i18n-iso-countries/langs/en.json"));
-const sequelize = require('./config/sequelize');
-const Profile = require('./model/profile'); 
-require('dotenv').config();
-
-const PORT = process.env.PORT || 3000;
+const countries = require('i18n-iso-countries');
+const { Profile } = require('./model/profile'); // Assuming your model is in a separate file
 
 const app = express();
+
+// --- Middleware ---
+app.use(cors({ origin: '*' }));
 app.use(express.json());
-app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
-const MAX_LIMIT = 100;
-const ALLOWED_SORT_FIELDS = ['age', 'created_at', 'gender_probability', 'country_probability'];
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// --- Helper: Dynamic Filter Builder ---
+/**
+ * Transforms raw query parameters into a Sequelize where clause
+ */
+const buildWhereClause = (params) => {
+    const where = {};
 
-function parsePagination(pageRaw, limitRaw) {
-    const pageNum = Math.max(parseInt(pageRaw, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limitRaw, 10) || 10, 1), MAX_LIMIT);
-    return { pageNum, limitNum };
-}
+    if (params.gender) where.gender = params.gender;
+    if (params.age_group) where.age_group = params.age_group;
+    if (params.country_id) where.country_id = params.country_id.toUpperCase();
 
-function buildPaginationEnvelope(count, pageNum, limitNum, data) {
-    const totalPages = count === 0 ? 0 : Math.ceil(count / limitNum);
-    return {
-        status: "success",
-        page: pageNum,
-        limit: limitNum,
-        total: count,
-        total_pages: totalPages,
-        has_next_page: pageNum < totalPages,
-        has_prev_page: pageNum > 1,
-        data
-    };
-}
-
-function validateProfileId(req, res) {
-    const id = String(req.params.id || '');
-    if (id.toLowerCase() === 'search') {
-        res.status(400).json({ status: "error", message: "Invalid profile id" });
-        return null;
+    // Numeric Range: Age
+    if (params.min_age || params.max_age) {
+        where.age = {};
+        if (params.min_age) where.age[Op.gte] = parseInt(params.min_age);
+        if (params.max_age) where.age[Op.lte] = parseInt(params.max_age);
     }
-    if (!UUID_PATTERN.test(id)) {
-        res.status(400).json({ status: "error", message: "Invalid UUID format" });
-        return null;
-    }
-    return id;
-}
 
-app.get('/api/profiles/search', async (req, res) => {
+    // Probability Thresholds
+    if (params.min_gender_probability) {
+        where.gender_probability = { [Op.gte]: parseFloat(params.min_gender_probability) };
+    }
+    if (params.min_country_probability) {
+        where.country_probability = { [Op.gte]: parseFloat(params.min_country_probability) };
+    }
+
+    return where;
+};
+
+// --- Helper: Rule-Based NLQ Parser ---
+/**
+ * Maps plain English strings to structured query parameters
+ */
+const parseNLQ = (q) => {
+    const text = q.toLowerCase();
+    const params = {};
+    let matched = false;
+
+    // 1. Gender Rules
+    if (/\bmales?\b/.test(text)) { params.gender = 'male'; matched = true; }
+    if (/\bfemales?\b/.test(text)) { params.gender = 'female'; matched = true; }
+
+    // 2. Age Group Rules
+    if (text.includes('teenager')) { params.age_group = 'teenager'; matched = true; }
+    if (text.includes('adult')) { params.age_group = 'adult'; matched = true; }
+    if (text.includes('senior')) { params.age_group = 'senior'; matched = true; }
+
+    // 3. Special Keyword: "young" (16-24)
+    if (text.includes('young')) {
+        params.min_age = 16;
+        params.max_age = 24;
+        matched = true;
+    }
+
+    // 4. Regex: "above X"
+    const aboveMatch = text.match(/above (\d+)/);
+    if (aboveMatch) {
+        params.min_age = parseInt(aboveMatch[1]);
+        matched = true;
+    }
+
+    // 5. Regex: "from [Country]"
+    const countryMatch = text.match(/from ([\w\s]+)/);
+    if (countryMatch) {
+        const countryName = countryMatch[1].trim();
+        const code = countries.getAlpha2Code(countryName, 'en');
+        if (code) {
+            params.country_id = code;
+            matched = true;
+        }
+    }
+
+    return matched ? params : null;
+};
+
+// --- Endpoints ---
+
+/**
+ * 1. Advanced Filtering & Sorting
+ * GET /api/profiles
+ */
+app.get('/api/profiles', async (req, res) => {
     try {
-        const { q, page = 1, limit = 10 } = req.query;
-        if (!q) return res.status(400).json({ status: "error", message: "Query 'q' is required" });
+        const { sort_by = 'created_at', order = 'desc', page = 1, limit = 10 } = req.query;
 
-        const query = q.toLowerCase().trim();
-        const where = {};
-        let interpreted = false;
-
-        // Gender (support both male and female in one query without forcing one side)
-        const hasMale = /\b(male|males|man|men)\b/.test(query);
-        const hasFemale = /\b(female|females|woman|women)\b/.test(query);
-        if (hasMale || hasFemale) {
-            interpreted = true;
-            if (hasMale && !hasFemale) where.gender = 'male';
-            if (hasFemale && !hasMale) where.gender = 'female';
+        // Validation for Sorting
+        const allowedSort = ['age', 'created_at', 'gender_probability'];
+        if (!allowedSort.includes(sort_by)) {
+            return res.status(422).json({ status: "error", message: "Invalid sort parameter" });
         }
 
-        // Age group keywords
-        if (/\byoung\b/.test(query)) { where.age = { [Op.gte]: 16, [Op.lte]: 24 }; interpreted = true; }
-        if (/\badults?\b/.test(query)) { where.age_group = 'adult'; interpreted = true; }
-        if (/\bteen(ager)?s?\b/.test(query)) { where.age_group = 'teenager'; interpreted = true; }
-        if (/\bchild(ren)?\b|\bkids?\b/.test(query)) { where.age_group = 'child'; interpreted = true; }
-        if (/\bsenior(s)?\b|\belderly\b/.test(query)) { where.age_group = 'senior'; interpreted = true; }
+        const paginationLimit = Math.min(parseInt(limit), 50);
+        const offset = (parseInt(page) - 1) * paginationLimit;
 
-         // Age comparisons
-        const aboveMatch = query.match(/(?:above|over|older than|greater than)\s+(\d+)/);
-        const belowMatch = query.match(/(?:below|under|younger than|less than)\s+(\d+)/);
-        const minMatch = query.match(/(?:at least|min(?:imum)?)\s+(\d+)/);
-        const maxMatch = query.match(/(?:at most|max(?:imum)?)\s+(\d+)/);
-
-        if (aboveMatch) {
-            const ageVal = parseInt(aboveMatch[1], 10);
-            where.age = { ...(where.age || {}), [Op.gt]: ageVal };
-            interpreted = true;
-        }
-        if (belowMatch) {
-            const ageVal = parseInt(belowMatch[1], 10);
-            where.age = { ...(where.age || {}), [Op.lt]: ageVal };
-            interpreted = true;
-        }
-        if (minMatch) {
-            const ageVal = parseInt(minMatch[1], 10);
-            where.age = { ...(where.age || {}), [Op.gte]: ageVal };
-            interpreted = true;
-        }
-        if (maxMatch) {
-            const ageVal = parseInt(maxMatch[1], 10);
-            where.age = { ...(where.age || {}), [Op.lte]: ageVal };
-            interpreted = true;
-        }
-
-        // Country Parsing
-        const countryMatch = query.match(/(?:from|in)\s+([a-zA-Z\s]+?)(?=\s+(?:above|over|older|greater|below|under|younger|less|at least|at most|min|max|and|or)\b|$)/);
-        if (countryMatch) {
-            const countryName = countryMatch[1].trim();
-            const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
-            if (countryId) { where.country_id = countryId.toUpperCase(); interpreted = true; }
-        }
-
-        if (!interpreted) return res.status(400).json({ status: "error", message: "Uninterpretable query" });
-
-        const { pageNum, limitNum } = parsePagination(page, limit);
+        const where = buildWhereClause(req.query);
 
         const { count, rows } = await Profile.findAndCountAll({
             where,
-            limit: limitNum,
-            offset: (pageNum - 1) * limitNum,
-            order: [['created_at', 'DESC'], ['id', 'ASC']]
+            order: [[sort_by, order.toUpperCase()]],
+            limit: paginationLimit,
+            offset: offset
         });
 
-        return res.status(200).json(buildPaginationEnvelope(count, pageNum, limitNum, rows));
+        return res.status(200).json({
+            status: "success",
+            page: parseInt(page),
+            limit: paginationLimit,
+            total: count,
+            data: rows
+        });
     } catch (error) {
-        console.error("Search Error:", error.stack);
+        console.error(error);
         return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
 
-app.get('/api/profiles', async (req, res) => {
+/**
+ * 2. Natural Language Query
+ * GET /api/profiles/search
+ */
+app.get('/api/profiles/search', async (req, res) => {
     try {
-        const {
-            gender,
-            country_id,
-            age_group,
-            min_age,
-            max_age,
-            min_gender_probability,
-            max_gender_probability,
-            min_country_probability,
-            max_country_probability,
-            gender_probability_min,
-            gender_probability_max,
-            country_probability_min,
-            country_probability_max,
-            page = 1,
-            limit = 10,
-            sort_by,
-            sortBy,
-            order = 'ASC'
-        } = req.query;
+        const { q, page = 1, limit = 10 } = req.query;
 
-        // Validation for sortBy
-        const resolvedSortBy = (sort_by || sortBy || 'created_at').toLowerCase();
-        const resolvedOrder = String(order).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-
-        if (!ALLOWED_SORT_FIELDS.includes(resolvedSortBy)) {
-            return res.status(400).json({
-                status: "error",
-                message: "Invalid sort_by field. Allowed fields: age, created_at, gender_probability, country_probability"
-            });
+        if (!q || q.trim() === "") {
+            return res.status(400).json({ status: "error", message: "Query parameter 'q' is required" });
         }
 
-        const where = {};
-        if (gender) where.gender = gender.toLowerCase();
-        if (country_id) where.country_id = country_id.toUpperCase();
-        if (age_group) where.age_group = age_group.toLowerCase();
+        const interpretedParams = parseNLQ(q);
 
-        if (min_age || max_age) {
-            where.age = {};
-            if (min_age) where.age[Op.gte] = parseInt(min_age, 10);
-            if (max_age) where.age[Op.lte] = parseInt(max_age, 10);
+        if (!interpretedParams) {
+            return res.status(200).json({ status: "error", message: "Unable to interpret query" });
         }
 
-        const resolvedMinGenderProbability = min_gender_probability ?? gender_probability_min;
-        const resolvedMaxGenderProbability = max_gender_probability ?? gender_probability_max;
-        const resolvedMinCountryProbability = min_country_probability ?? country_probability_min;
-        const resolvedMaxCountryProbability = max_country_probability ?? country_probability_max;
-
-        if (resolvedMinGenderProbability || resolvedMaxGenderProbability) {
-            where.gender_probability = {};
-            if (resolvedMinGenderProbability) where.gender_probability[Op.gte] = parseFloat(resolvedMinGenderProbability);
-            if (resolvedMaxGenderProbability) where.gender_probability[Op.lte] = parseFloat(resolvedMaxGenderProbability);
-        }
-
-        if (resolvedMinCountryProbability || resolvedMaxCountryProbability) {
-            where.country_probability = {};
-            if (resolvedMinCountryProbability) where.country_probability[Op.gte] = parseFloat(resolvedMinCountryProbability);
-            if (resolvedMaxCountryProbability) where.country_probability[Op.lte] = parseFloat(resolvedMaxCountryProbability);
-        }
-
-        const { pageNum, limitNum } = parsePagination(page, limit);
+        const paginationLimit = Math.min(parseInt(limit), 50);
+        const offset = (parseInt(page) - 1) * paginationLimit;
+        
+        // Use the same where clause builder to keep logic DRY
+        const where = buildWhereClause(interpretedParams);
 
         const { count, rows } = await Profile.findAndCountAll({
             where,
-            limit: limitNum,
-            offset: (pageNum - 1) * limitNum,
-            order: [[resolvedSortBy, resolvedOrder], ['id', 'ASC']]
+            limit: paginationLimit,
+            offset: offset,
+            order: [['created_at', 'DESC']]
         });
 
-        return res.status(200).json(buildPaginationEnvelope(count, pageNum, limitNum, rows));
+        return res.status(200).json({
+            status: "success",
+            page: parseInt(page),
+            limit: paginationLimit,
+            total: count,
+            data: rows
+        });
+
     } catch (error) {
-        console.error("List Error:", error.stack);
-        res.status(500).json({ status: "error", message: "Internal Server Error" });
-    }
-});
-
-app.get('/api/profiles/:id', async (req, res) => {
-    const id = validateProfileId(req, res);
-    if (!id) return;
-
-    try {
-        const profile = await Profile.findByPk(id);
-        if (!profile) return res.status(404).json({ status: "error", message: "Profile not found" });
-        return res.status(200).json({ status: "success", data: profile });
-    } catch (error) {
-        // This catches the 'invalid input syntax for type uuid'
-        return res.status(400).json({ status: "error", message: "Invalid UUID format" });
-    }
-});
-
-app.delete('/api/profiles/:id', async (req, res) => {
-    try {
-        const id = validateProfileId(req, res);
-        if (!id) return;
-        const deletedCount = await Profile.destroy({ where: { id } });
-        if (deletedCount === 0) {
-            return res.status(404).json({ status: "error", message: "Profile not found" });
-        }
-        return res.status(204).send();
-    }catch(error){
-        console.error("Internal Error:", error.message);
-        res.status(500).json({ status: "error", message: "Internal Server Error" });
+        return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
 
@@ -330,13 +264,8 @@ app.post('/api/profiles', async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', async () => {
-    try {
-        await sequelize.authenticate();
-        console.log('Database connected.');
-        await sequelize.sync();
-        console.log(`Server is running on port ${PORT}`);
-    } catch (error) {
-        console.error('Unable to connect to the database:', error);
-    }
+// --- Server Start ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Intelligence Query Engine running on port ${PORT}`);
 });
