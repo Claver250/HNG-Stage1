@@ -193,21 +193,18 @@ app.get('/api/profiles', async (req, res) => {
     }
 });
 
-app.get('/api/profiles/:id([0-9a-fA-F-]{36})', async (req, res) => {
-    try {
-        const profile = await Profile.findByPk(req.params.id);
-        if (!profile) return res.status(404).json({ status: "error", message: "Profile not found" });
-        return res.status(200).json({ status: "success", data: profile });
-    } catch (error) {
-        return res.status(400).json({ status: "error", message: "Invalid UUID format" });
-    }
-});
-
 app.get('/api/profiles/:id', async (req, res) => {
     const { id } = req.params;
 
     // This stops the word "search" from hitting the DB
-    if (id === 'search') return res.status(400).json({ status: "error", message: "Invalid search parameters" });
+    if (id.toLowerCase() === 'search') {
+        return res.status(400).json({ status: "error", message: "Invalid profile id" });
+    }
+
+    const uuidV4Like = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidV4Like.test(id)) {
+        return res.status(400).json({ status: "error", message: "Invalid UUID format" });
+    }
 
     try {
         const profile = await Profile.findByPk(id);
