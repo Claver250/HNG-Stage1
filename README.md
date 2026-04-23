@@ -1,108 +1,40 @@
-# Profile Intelligence Service & NL Search
+## 🧠 Natural Language Search Engine
 
-A robust backend service that enriches personal names with demographic insights and provides a **Natural Language Search Engine** to query the processed data. 
+The `/api/profiles/search` endpoint implements a custom **Rule-Based Natural Language Processing (NLP)** engine. This allows users to query the database using plain English sentences without the overhead or unpredictability of an LLM.
 
-## 🚀 New Feature: Natural Language Search
-The core update for Stage 1 is the **Rule-Based Natural Language Processing (NLP)** engine located at `/api/profiles/search`.
+### 🛠️ How the Logic Works
+The engine processes the input string `q` through three distinct phases:
 
-### How the Logic Works
-The engine processes the input string `q` through a deterministic pipeline:
-1. **Normalization:** Input is lowercased and trimmed.
-2. **Regex Tokenization:** Uses word boundaries (`\b`) to identify intent (e.g., ensuring "mail" doesn't trigger "male").
-3. **Keyword Mapping:** Maps human terms to Sequelize operators.
+1.  **Normalization:** The input is converted to lowercase and stripped of special characters to ensure case-insensitive matching.
+2.  **Tokenization & Pattern Matching:** We use **Regular Expressions (Regex)** with word boundaries (`\b`) to identify intent. This prevents "partial matches" (e.g., ensuring the word "email" doesn't accidentally trigger a "male" gender filter).
+3.  **Logical Mapping:** Detected tokens are mapped to Sequelize operators (`Op.gte`, `Op.lte`, `Op.eq`) to build a dynamic `where` clause.
 
-### Supported Keywords & Mappings
+### 🔑 Supported Keywords & Mappings
+
 | Category | Keywords | Logic / Mapping |
 | :--- | :--- | :--- |
-| **Gender** | `male`, `men`, `female`, `women` | `gender = 'male'/'female'` |
+| **Gender** | `male`, `men`, `female`, `women` | `gender = 'male'` or `'female'` |
 | **Age Group** | `child`, `teenager`, `adult`, `senior` | Maps to `age_group` column |
-| **"Young"** | `young` | `age BETWEEN 16 AND 24` |
-| **Comparison** | `above`, `over`, `below`, `under` | `age > X` or `age < X` |
-| **Geography** | `from [Country]`, `in [Country]` | Maps name to ISO-2 (e.g. "Nigeria" → "NG") |
+| **"Young"** | `young` | Custom range: `age BETWEEN 16 AND 24` |
+| **Comparison** | `above`, `over`, `below`, `under` | Captures following digit: `age > X` or `age < X` |
+| **Geography** | `from [Country]`, `in [Country]` | Uses `i18n-iso-countries` to map names to ISO-2 codes (e.g., "Nigeria" → "NG") |
 
-### Limitations & Edge Cases
-* **No Semantic Negation:** Does not understand "not male."
-* **Single Conjunctions:** All filters are applied as `AND` logic; `OR` is not currently supported.
-* **Geographic Specificity:** Supports country names only (no cities or states).
-* **Numeric Dependency:** Comparisons require digits (e.g., "above 20" works, "above twenty" does not).
-
----
-
-## 🛠 Updated API Endpoints
-
-### 1. Natural Language Search (New)
-**GET** `/api/profiles/search?q=young males from nigeria`
-* **400 Error:** If `q` is missing.
-* **422 Error:** If invalid types are passed.
-
-### 2. List Profiles (Enhanced)
-**GET** `/api/profiles?gender=male&page=1&limit=10`
-* **Pagination:** Supported via `page` and `limit`.
-* **Performance:** Handles 2026 records efficiently using B-Tree indexing on `gender`, `country_id`, and `age_group`.
-
-### 3. Create / Enrich Profile (Idempotent)
-**POST** `/api/profiles` (Body: `{"name": "ella"}`)
-
-### 4. Get/Delete Profile
-**GET/DELETE** `/api/profiles/{id}`
+**Example Logic Flow:**
+Query: *"young females from nigeria above 20"*
+1.  `young` → `age >= 16 AND age <= 24`
+2.  `females` → `gender = 'female'`
+3.  `from nigeria` → `country_id = 'NG'`
+4.  `above 20` → `age > 20`
+5.  **Result:** Profiles where `gender='female'`, `country_id='NG'`, and `age` is between 21 and 24.
 
 ---
 
-## 📈 Performance & Scalability
-To handle the **2026 record requirement**, the service employs:
-* **Indexing:** B-Tree indexes on filtered columns to avoid full-table scans.
-* **Clamped Pagination:** `limit` is capped at 50 to prevent DoS-style payload sizes.
-* **Server-Side Sorting:** Sorting is handled at the DB level via Sequelize `order`.
+### ⚠️ Limitations & Edge Cases
 
----
+While the parser is robust for standard queries, it has the following limitations:
 
-## Setup & Installation
-
-### 1. Clone the repository
-```bash
-git clone <your-repo-url>
-cd profile-intelligence-service
-```
-
-### 2. Install dependencies
-```bash
-npm install
-```
-
-### 3. Configure Database
-Update `config/sequelize.js` with your database credentials (PostgreSQL, MySQL, or SQLite for testing).
-
-Example for PostgreSQL:
-```js
-const { Sequelize } = require('sequelize');
-
-const sequelize = new Sequelize('database_name', 'username', 'password', {
-  host: 'localhost',
-  dialect: 'postgres',
-  logging: false,
-});
-
-module.exports = sequelize;
-```
-
-### 4. Run the application
-```bash
-npm start
-```
-
-The server will start on **http://localhost:3000**
-
-## Testing the API
-
-You can test using **Postman**, **Thunder Client**, or **curl**.
-
-**Example:**
-```bash
-# Create a profile
-curl -X POST http://localhost:3000/api/profiles \
-  -H "Content-Type: application/json" \
-  -d '{"name": "emmanuel"}'
-
-# Get all profiles with filter
-curl "http://localhost:3000/api/profiles?gender=male&country_id=NG"
-
+* **No Semantic Context:** The parser cannot distinguish between "not a male" and "is a male." It looks for the presence of keywords regardless of negation.
+* **Ambiguous Geographic Names:** Only official country names and common English aliases are supported. It does not support cities, states, or slang (e.g., "Lagos" or "Naija" will not map to Nigeria).
+* **Complex Conjunctions:** The engine treats all detected filters as an `AND` operation. It does not currently support `OR` logic (e.g., "males from Kenya OR Ghana").
+* **Non-numeric ages:** The parser expects digits for age comparisons. It will not understand "above twenty."
+* **Keyword Overlap:** If a user types "young adult," the system will apply both the "young" (16-24) filter and the "adult" category filter, which may result in a very narrow or empty result set depending on database values.

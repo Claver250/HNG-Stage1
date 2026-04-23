@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const { v7: uuidv7 } = require('uuid'); 
 const cors = require('cors');
-const { Op, or } = require('sequelize');
+const { Op} = require('sequelize');
 const ISOcountries = require('i18n-iso-countries');
 ISOcountries.registerLocale(require("i18n-iso-countries/langs/en.json"));
 const sequelize = require('./config/sequelize');
@@ -297,7 +297,7 @@ app.listen(PORT, '0.0.0.0', async () => {
     try {
         await sequelize.authenticate();
         console.log('Database connected.');
-        await sequelize.sync({ force: true });
+        await sequelize.sync();
         console.log(`Server is running on port ${PORT}`);
     } catch (error) {
         console.error('Unable to connect to the database:', error);
