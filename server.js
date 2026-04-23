@@ -140,7 +140,13 @@ app.get('/api/profiles', async (req, res) => {
 
 app.get('/api/profiles/:id', async (req, res) => {
     try {
-        if (req.params.id === 'search') return next();        
+        if (req.params.id === 'search') return next();
+        if (id === 'search') {
+        return res.status(404).json({ 
+            status: "error", 
+            message: "Search route was missed. Check your query parameters." 
+        });
+    }        
         const profile = await Profile.findByPk(req.params.id);
         if (!profile) {
             return res.status(404).json({ status: "error", message: "Profile not found" });
@@ -158,6 +164,7 @@ app.get('/api/profiles/:id', async (req, res) => {
 
 app.delete('/api/profiles/:id', async (req, res) => {
     try {
+        if (req.params.id === 'search') return next(); 
         const deletedCount = await Profile.destroy({ where: { id: req.params.id } });
         if (deletedCount === 0) {
             return res.status(204).json({ status: "error", message: "Profile not found" });
