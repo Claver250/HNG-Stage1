@@ -79,23 +79,6 @@ app.get('/api/profiles/search', async (req, res) => {
     }
 });
 
-app.get('/api/profiles/:id([0-9a-fA-F-]{36})', async (req, res) => {
-    try {
-        const profile = await Profile.findByPk(req.params.id);
-        if (!profile) {
-            return res.status(404).json({ status: "error", message: "Profile not found" });
-        }
-
-        return res.status(200).json({
-            status: "success",
-            data: profile
-        });
-    } catch (error) {
-        console.error("ID Route Error:", error.message);
-        res.status(500).json({ status: "error", message: "Internal Server Error" });
-    }
-});
-
 app.get('/api/profiles', async (req, res) => {
     try {
         const MAX_LIMIT = 50;
@@ -151,6 +134,23 @@ app.get('/api/profiles', async (req, res) => {
         });
     } catch (error) {
         console.error("Internal Error:", error);
+        res.status(500).json({ status: "error", message: "Internal Server Error" });
+    }
+});
+
+app.get('/api/profiles/:id([0-9a-fA-F-]{36})', async (req, res) => {
+    try {
+        const profile = await Profile.findByPk(req.params.id);
+        if (!profile) {
+            return res.status(404).json({ status: "error", message: "Profile not found" });
+        }
+
+        return res.status(200).json({
+            status: "success",
+            data: profile
+        });
+    } catch (error) {
+        console.error("ID Route Error:", error.message);
         res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
