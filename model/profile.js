@@ -4,7 +4,7 @@ const { v7: uuidv7, validate } = require('uuid');
 
 const Profile = sequelize.define('Profile', {
     id: {
-        type: DataTypes.UUID,
+        type: DataTypes.STRING,
         primaryKey: true,
         allowNull: false,
         defaultValue: () => uuidv7() // Generate UUID v7 for each new profile
