@@ -80,6 +80,7 @@ app.get('/api/profiles/search', async (req, res) => {
 });
 
 app.get('/api/profiles/:id', async (req, res) => {
+    if (req.params.id === 'search') return next();
     try {
         const profile = await Profile.findByPk(req.params.id);
         if (!profile) {
