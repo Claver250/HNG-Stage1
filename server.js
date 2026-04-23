@@ -73,7 +73,7 @@ app.post('/api/profiles', async (req, res) => {
 
         // 3. Process Age Group
         const age = ageData.age;
-        let age_group = "senior";
+        const age_group = "senior";
         if (age <= 12) age_group = "child";
         else if (age <= 19) age_group = "teenager";
         else if (age <= 59) age_group = "adult";
@@ -131,7 +131,8 @@ app.get('/api/profiles/search', async (req, res) => {
         // Comparisons
         const aboveMatch = query.match(/(?:above|older than)\s+(\d+)/);
         if (aboveMatch) {
-            where.age = { ...where.age, [Op.gt]: parseInt(aboveMatch[1]) };
+            const ageVal = parseInt(aboveMatch[1]);
+            where.age = { ...where.age, [Op.gt]: ageVal };
             interpreted = true;
         }
 
@@ -230,7 +231,9 @@ app.get('/api/profiles', async (req, res) => {
             limit: limitNum,
             offset: offset,
             // 4. Fixed fallback to underscored 'created_at'
-            order: [[ (['age', 'created_at', 'gender_probability', 'country_probability'].includes(sortBy) ? sortBy : 'created_at'), (order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC') ]]
+            order: [
+                [ 
+                    (['age', 'created_at', 'gender_probability', 'country_probability'].includes(sortBy) ? sortBy : 'created_at'), (order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC') ]]
         });
 
         return res.status(200).json({
