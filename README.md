@@ -1,9 +1,3 @@
-To merge these effectively, you should keep your existing **Features**, **Tech Stack**, and **API Endpoints** sections, but update them to include the new Stage 1 requirements. 
-
-Since you are being graded on the Natural Language parsing specifically, that section needs to be prominent. Here is how you should restructure your README to include both tasks seamlessly:
-
----
-
 # Profile Intelligence Service & NL Search
 
 A robust backend service that enriches personal names with demographic insights and provides a **Natural Language Search Engine** to query the processed data. 
