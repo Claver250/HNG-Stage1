@@ -92,7 +92,7 @@ app.get('/api/profiles/:id', async (req, res) => {
             data: profile
         });
     } catch (error) {
-        console.error("Internal Error:", error.message);
+        console.error("ID Route Error:", error.message);
         res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
