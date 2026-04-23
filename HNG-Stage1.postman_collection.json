@@ -176,6 +176,187 @@
           "cookie": [],
           "body": "{\n    \"status\": \"success\",\n    \"count\": 2,\n    \"data\": [\n        {\n            \"id\": \"019d9628-32c0-703e-9fc0-c17380f01217\",\n            \"name\": \"john\",\n            \"gender\": \"male\",\n            \"age\": 75,\n            \"country_id\": \"NG\"\n        },\n        {\n            \"id\": \"019d9656-622c-74a8-81ae-ec654a9148a5\",\n            \"name\": \"slyvia\",\n            \"gender\": \"female\",\n            \"age\": 68,\n            \"country_id\": \"UG\"\n        }\n    ]\n}"
         }
+      ]  
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:3000/api/profiles?gender=male&country_id=NG&sort_by=age&order=desc&page=1&limit=10",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "profiles"
+          ],
+          "query": [
+            {
+              "key": "gender",
+              "value": "male",
+              "type": "text"
+            },
+            {
+              "key": "country_id",
+              "value": "NG",
+              "type": "text"
+            },
+            {
+              "key": "sort_by",
+              "value": "age",
+              "type": "text"
+            },
+            {
+              "key": "order",
+              "value": "desc",
+              "type": "text"
+            },
+            {
+              "key": "page",
+              "value": "1",
+              "type": "text"
+            },
+            {
+              "key": "limit",
+              "value": "10",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "response": [
+        {
+            "status": "success",
+            "page": 1,
+            "limit": 10,
+            "total": 5,
+            "data": [
+                {
+                    "id": "019dab6c-1620-74cb-8a87-12b00ce6b067",
+                    "name": "emmanuel",
+                    "gender": "male",
+                    "gender_probability": "0.99",
+                    "age": 49,
+                    "age_group": "adult",
+                    "country_id": "NG",
+                    "country_name": null,
+                    "country_probability": 0.17488768704489657,
+                    "created_at": "2026-04-20T15:04:40.736Z"
+                },
+                {
+                    "id": "019dab68-66da-7376-9284-6662bde591b6",
+                    "name": "elijah",
+                    "gender": "male",
+                    "gender_probability": "0.99",
+                    "age": 35,
+                    "age_group": "adult",
+                    "country_id": "NG",
+                    "country_name": "NG",
+                    "country_probability": 0.2161916980504507,
+                    "created_at": "2026-04-20T15:00:39.252Z"
+                },
+                {
+                    "id": "019d9cce-ba57-7013-a671-fbcb53a5a102",
+                    "name": "david",
+                    "gender": "male",
+                    "gender_probability": "1",
+                    "age": 64,
+                    "age_group": "senior",
+                    "country_id": "NG",
+                    "country_name": null,
+                    "country_probability": 0.049693876309937865,
+                    "created_at": "2026-04-17T18:58:07.063Z"
+                },
+                {
+                    "id": "019d9cce-ae27-7570-8c0a-ba6927ab80ee",
+                    "name": "michael",
+                    "gender": "male",
+                    "gender_probability": "1",
+                    "age": 65,
+                    "age_group": "senior",
+                    "country_id": "NG",
+                    "country_name": null,
+                    "country_probability": 0.08072891893012198,
+                    "created_at": "2026-04-17T18:58:03.943Z"
+                },
+                {
+                    "id": "019d9cce-a0db-761a-8b43-abe3e722c308",
+                    "name": "john",
+                    "gender": "male",
+                    "gender_probability": "1",
+                    "age": 75,
+                    "age_group": "senior",
+                    "country_id": "NG",
+                    "country_name": null,
+                    "country_probability": 0.07613817567167579,
+                    "created_at": "2026-04-17T18:58:00.539Z"
+                }
+            ]
+        }
+      ]
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:3000/api/profiles/search?q=adult males from Nigeria",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "profiles",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "adult males from Nigeria"
+            }
+          ]
+        }
+      },
+      "response": [
+        {
+            "status": "success",
+            "page": 1,
+            "limit": 10,
+            "total": 2,
+            "data": [
+                {
+                    "id": "019dab6c-1620-74cb-8a87-12b00ce6b067",
+                    "name": "emmanuel",
+                    "gender": "male",
+                    "gender_probability": "0.99",
+                    "sample_size": 383650,
+                    "age": 49,
+                    "age_group": "adult",
+                    "country_id": "NG",
+                    "country_name": null,
+                    "country_probability": 0.17488768704489657,
+                    "created_at": "2026-04-20T15:04:40.736Z"
+                },
+                {
+                    "id": "019dab68-66da-7376-9284-6662bde591b6",
+                    "name": "elijah",
+                    "gender": "male",
+                    "gender_probability": "0.99",
+                    "sample_size": 41439,
+                    "age": 35,
+                    "age_group": "adult",
+                    "country_id": "NG",
+                    "country_name": "NG",
+                    "country_probability": 0.2161916980504507,
+                    "created_at": "2026-04-20T15:00:39.252Z"
+                }
+            ]
+        }
       ]
     }
   ]
