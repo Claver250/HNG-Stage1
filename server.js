@@ -16,6 +16,7 @@ app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
 const MAX_LIMIT = 100;
 const ALLOWED_SORT_FIELDS = ['age', 'created_at', 'gender_probability', 'country_probability'];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function parsePagination(pageRaw, limitRaw) {
     const pageNum = Math.max(parseInt(pageRaw, 10) || 1, 1);
@@ -35,6 +36,19 @@ function buildPaginationEnvelope(count, pageNum, limitNum, data) {
         has_prev_page: pageNum > 1,
         data
     };
+}
+
+function validateProfileId(req, res) {
+    const id = String(req.params.id || '');
+    if (id.toLowerCase() === 'search') {
+        res.status(400).json({ status: "error", message: "Invalid profile id" });
+        return null;
+    }
+    if (!UUID_PATTERN.test(id)) {
+        res.status(400).json({ status: "error", message: "Invalid UUID format" });
+        return null;
+    }
+    return id;
 }
 
 app.get('/api/profiles/search', async (req, res) => {
@@ -194,17 +208,8 @@ app.get('/api/profiles', async (req, res) => {
 });
 
 app.get('/api/profiles/:id', async (req, res) => {
-    const { id } = req.params;
-
-    // This stops the word "search" from hitting the DB
-    if (id.toLowerCase() === 'search') {
-        return res.status(400).json({ status: "error", message: "Invalid profile id" });
-    }
-
-    const uuidV4Like = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidV4Like.test(id)) {
-        return res.status(400).json({ status: "error", message: "Invalid UUID format" });
-    }
+    const id = validateProfileId(req, res);
+    if (!id) return;
 
     try {
         const profile = await Profile.findByPk(id);
@@ -218,9 +223,11 @@ app.get('/api/profiles/:id', async (req, res) => {
 
 app.delete('/api/profiles/:id', async (req, res) => {
     try {
-        const deletedCount = await Profile.destroy({ where: { id: req.params.id } });
+        const id = validateProfileId(req, res);
+        if (!id) return;
+        const deletedCount = await Profile.destroy({ where: { id } });
         if (deletedCount === 0) {
-            return res.status(204).json({ status: "error", message: "Profile not found" });
+            return res.status(404).json({ status: "error", message: "Profile not found" });
         }
         return res.status(204).send();
     }catch(error){
