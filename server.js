@@ -79,9 +79,15 @@ app.get('/api/profiles/search', async (req, res) => {
             data: result.rows
         });
     } catch (error) {
-        console.error("CRITICAL SEARCH ERROR:", error.message);
-        // If PostgreSQL throws the UUID error here, we catch it!
-        return res.status(500).json({ status: "error", message: "Database Error: " + error.message });
+        // console.error("ID Route Error:", error.message);
+        console.error("DEBUG ERROR TRACE:");
+        console.error(error.stack);
+        res.status(500).json({
+            status: "error", 
+            message: "Internal Server Error",
+            dev_info: error.message, // This helps you see the error in Postman too
+            line: error.stack.split('\n')[1] 
+        });
     }
 });
 
@@ -104,9 +110,15 @@ app.get('/api/profiles/:id', async (req, res) => {
             data: profile
         });
     } catch (error) {
-        console.error("ID Route Error:", error.message);
-        return res.status(400).json({ status: "error", message: "Invalid ID format" });
-        // res.status(500).json({ status: "error", message: "Internal Server Error" });
+        // console.error("ID Route Error:", error.message);
+        console.error("DEBUG ERROR TRACE:");
+        console.error(error.stack);
+        res.status(500).json({
+            status: "error", 
+            message: "Internal Server Error",
+            dev_info: error.message, // This helps you see the error in Postman too
+            line: error.stack.split('\n')[1] 
+        });
     }
 });
 
