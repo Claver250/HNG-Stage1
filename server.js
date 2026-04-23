@@ -91,45 +91,6 @@ const parseNLQ = (q) => {
  * 1. Advanced Filtering & Sorting
  * GET /api/profiles
  */
-app.get('/api/profiles', async (req, res) => {
-    try {
-        const { sort_by = 'created_at', order = 'desc', page = 1, limit = 10 } = req.query;
-
-        // Validation for Sorting
-        const allowedSort = ['age', 'created_at', 'gender_probability'];
-        if (!allowedSort.includes(sort_by)) {
-            return res.status(422).json({ status: "error", message: "Invalid sort parameter" });
-        }
-
-        const paginationLimit = Math.min(parseInt(limit), 50);
-        const offset = (parseInt(page) - 1) * paginationLimit;
-
-        const where = buildWhereClause(req.query);
-
-        const { count, rows } = await Profile.findAndCountAll({
-            where,
-            order: [[sort_by, order.toUpperCase()]],
-            limit: paginationLimit,
-            offset: offset
-        });
-
-        return res.status(200).json({
-            status: "success",
-            page: parseInt(page),
-            limit: paginationLimit,
-            total: count,
-            data: rows
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({ status: "error", message: "Internal Server Error" });
-    }
-});
-
-/**
- * 2. Natural Language Query
- * GET /api/profiles/search
- */
 app.get('/api/profiles/search', async (req, res) => {
     try {
         const { q, page = 1, limit = 10 } = req.query;
@@ -169,6 +130,46 @@ app.get('/api/profiles/search', async (req, res) => {
         return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
+
+app.get('/api/profiles', async (req, res) => {
+    try {
+        const { sort_by = 'created_at', order = 'desc', page = 1, limit = 10 } = req.query;
+
+        // Validation for Sorting
+        const allowedSort = ['age', 'created_at', 'gender_probability'];
+        if (!allowedSort.includes(sort_by)) {
+            return res.status(422).json({ status: "error", message: "Invalid sort parameter" });
+        }
+
+        const paginationLimit = Math.min(parseInt(limit), 50);
+        const offset = (parseInt(page) - 1) * paginationLimit;
+
+        const where = buildWhereClause(req.query);
+
+        const { count, rows } = await Profile.findAndCountAll({
+            where,
+            order: [[sort_by, order.toUpperCase()]],
+            limit: paginationLimit,
+            offset: offset
+        });
+
+        return res.status(200).json({
+            status: "success",
+            page: parseInt(page),
+            limit: paginationLimit,
+            total: count,
+            data: rows
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ status: "error", message: "Internal Server Error" });
+    }
+});
+
+/**
+ * 2. Natural Language Query
+ * GET /api/profiles/search
+ */
 
 app.post('/api/profiles', async (req, res) => {
     try {
