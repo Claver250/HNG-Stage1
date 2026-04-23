@@ -1,87 +1,66 @@
-# Data Persistence & API Design Assessment
+To merge these effectively, you should keep your existing **Features**, **Tech Stack**, and **API Endpoints** sections, but update them to include the new Stage 1 requirements. 
 
-A robust backend service that enriches personal names with demographic insights by integrating three external APIs (Genderize, Agify, and Nationalize), persists the processed data, and provides a clean RESTful API for management.
+Since you are being graded on the Natural Language parsing specifically, that section needs to be prominent. Here is how you should restructure your README to include both tasks seamlessly:
 
-This project was built as part of a backend assessment focusing on multi-API integration, data persistence, idempotency, and clean API design.
+---
 
-## Features
+# Profile Intelligence Service & NL Search
 
-- **Multi-API Integration**: Fetches and aggregates data from Genderize, Agify, and Nationalize APIs concurrently.
-- **Intelligent Data Processing**:
-  - Gender prediction with probability and sample size.
-  - Age estimation and automatic age group classification (`child`, `teenager`, `adult`, `senior`).
-  - Country prediction using highest probability.
-- **Idempotency**: Prevents duplicate records for the same name (case-insensitive).
-- **RESTful API** with consistent JSON responses.
-- **Advanced Filtering**: Query profiles by `gender`, `country_id`, and `age_group`.
-- **Proper Error Handling**: Returns 502 for invalid external API responses.
-- **UUID v7** for unique identifiers.
-- **UTC Timestamps** for all records.
-- **CORS** enabled (`Access-Control-Allow-Origin: *`).
+A robust backend service that enriches personal names with demographic insights and provides a **Natural Language Search Engine** to query the processed data. 
 
-## Tech Stack
+## 🚀 New Feature: Natural Language Search
+The core update for Stage 1 is the **Rule-Based Natural Language Processing (NLP)** engine located at `/api/profiles/search`.
 
-- **Node.js** + **Express.js**
-- **Sequelize ORM** (PostgreSQL / MySQL compatible)
-- **Axios** for HTTP requests
-- **UUID v7** (`uuid` package)
-- **CORS** middleware
+### How the Logic Works
+The engine processes the input string `q` through a deterministic pipeline:
+1. **Normalization:** Input is lowercased and trimmed.
+2. **Regex Tokenization:** Uses word boundaries (`\b`) to identify intent (e.g., ensuring "mail" doesn't trigger "male").
+3. **Keyword Mapping:** Maps human terms to Sequelize operators.
 
-## API Endpoints
+### Supported Keywords & Mappings
+| Category | Keywords | Logic / Mapping |
+| :--- | :--- | :--- |
+| **Gender** | `male`, `men`, `female`, `women` | `gender = 'male'/'female'` |
+| **Age Group** | `child`, `teenager`, `adult`, `senior` | Maps to `age_group` column |
+| **"Young"** | `young` | `age BETWEEN 16 AND 24` |
+| **Comparison** | `above`, `over`, `below`, `under` | `age > X` or `age < X` |
+| **Geography** | `from [Country]`, `in [Country]` | Maps name to ISO-2 (e.g. "Nigeria" → "NG") |
 
-### 1. Create / Enrich Profile
-**POST** `/api/profiles`
+### Limitations & Edge Cases
+* **No Semantic Negation:** Does not understand "not male."
+* **Single Conjunctions:** All filters are applied as `AND` logic; `OR` is not currently supported.
+* **Geographic Specificity:** Supports country names only (no cities or states).
+* **Numeric Dependency:** Comparisons require digits (e.g., "above 20" works, "above twenty" does not).
 
-**Request Body:**
-```json
-{
-  "name": "ella"
-}
-```
+---
 
-**Success Responses:**
-- `201 Created` – New profile created
-- `200 OK` – Profile already exists (idempotent)
+## 🛠 Updated API Endpoints
 
-### 2. Get Profile by ID
-**GET** `/api/profiles/{id}`
+### 1. Natural Language Search (New)
+**GET** `/api/profiles/search?q=young males from nigeria`
+* **400 Error:** If `q` is missing.
+* **422 Error:** If invalid types are passed.
 
-### 3. List Profiles (with optional filters)
-**GET** `/api/profiles?gender=male&country_id=NG&age_group=adult`
+### 2. List Profiles (Enhanced)
+**GET** `/api/profiles?gender=male&page=1&limit=10`
+* **Pagination:** Supported via `page` and `limit`.
+* **Performance:** Handles 2026 records efficiently using B-Tree indexing on `gender`, `country_id`, and `age_group`.
 
-**Response includes** `count` and simplified data array.
+### 3. Create / Enrich Profile (Idempotent)
+**POST** `/api/profiles` (Body: `{"name": "ella"}`)
 
-### 4. Delete Profile
-**DELETE** `/api/profiles/{id}`  
-Returns `204 No Content` on success.
+### 4. Get/Delete Profile
+**GET/DELETE** `/api/profiles/{id}`
 
-## Error Responses
+---
 
-All errors follow this structure:
-```json
-{
-  "status": "error",
-  "message": "Error description"
-}
-```
+## 📈 Performance & Scalability
+To handle the **2026 record requirement**, the service employs:
+* **Indexing:** B-Tree indexes on filtered columns to avoid full-table scans.
+* **Clamped Pagination:** `limit` is capped at 50 to prevent DoS-style payload sizes.
+* **Server-Side Sorting:** Sorting is handled at the DB level via Sequelize `order`.
 
-- `400` – Missing or invalid name
-- `404` – Profile not found
-- `502` – Invalid response from external API (Genderize / Agify / Nationalize)
-- `500` – Internal server error
-
-## Project Structure
-
-```
-profile-intelligence-service/
-├── config/
-│   └── sequelize.js
-├── models/
-│   └── Profile.js
-├── app.js                 # Main server file
-├── package.json
-└── README.md
-```
+---
 
 ## Setup & Installation
 
@@ -132,4 +111,4 @@ curl -X POST http://localhost:3000/api/profiles \
 
 # Get all profiles with filter
 curl "http://localhost:3000/api/profiles?gender=male&country_id=NG"
-```
+

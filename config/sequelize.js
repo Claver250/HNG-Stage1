@@ -5,26 +5,26 @@ const connectionString = process.env.DATABASE_URL;
 
 let sequelize;
 
-// If DATABASE_URL exists, we are likely on Neon/Railway/Render
-if (connectionString) {
-    console.log('🚀 Production detected via DATABASE_URL → Connecting with SSL');
+if (connectionString && connectionString.trim() !== "") {
+    console.log(' Production detected via DATABASE_URL → Connecting with SSL');
     
     sequelize = new Sequelize(connectionString.trim(), {
         dialect: 'postgres',
         dialectOptions: {
             ssl: {
                 require: true,
-                rejectUnauthorized: false
+                rejectUnauthorized: false,
+                sslmode: 'require'
             }
         },
         logging: false
     });
-} else {
-    // Truly local development (no DATABASE_URL in .env)
-    console.log('💻 No DATABASE_URL found → Using local fallback');
+} else if (process.env.DB_NAME) {
+    // This part only runs if DATABASE_URL is missing but you provided individual DB variables
+    console.log(' Individual env variables found → Using local fallback');
     
     sequelize = new Sequelize(
-        process.env.DB_NAME || 'Stage1-db',
+        process.env.DB_NAME,
         process.env.DB_USER || 'postgres',
         process.env.DB_PASSWORD || '',
         {
@@ -33,6 +33,10 @@ if (connectionString) {
             dialect: 'postgres'
         }
     );
+} else {
+    // If BOTH are missing, your app shouldn't start blindly
+    console.error(' ERROR: No database configuration found. Please check your .env file.');
+    process.exit(1);
 }
 
 module.exports = sequelize;

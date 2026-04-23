@@ -2,8 +2,12 @@ const express = require('express');
 const axios = require('axios');
 const { v7: uuidv7 } = require('uuid'); 
 const cors = require('cors');
+const { Op, or } = require('sequelize');
+const ISOcountries = require('i18n-iso-countries');
+ISOcountries.registerLocale(require("i18n-iso-countries/langs/en.json"));
 const sequelize = require('./config/sequelize');
 const Profile = require('./model/profile'); 
+const { parse } = require('node:path');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
@@ -79,6 +83,8 @@ app.post('/api/profiles', async (req, res) => {
             (curr.probability > prev.probability) ? curr : prev
         );
 
+        const fullName = ISOcountries.getName(topCountry.country_id, "en");
+
         // 5. Persist to Database
         const newProfile = await Profile.create({
             name: normalizedName,
@@ -88,6 +94,7 @@ app.post('/api/profiles', async (req, res) => {
             age: age,
             age_group: age_group,
             country_id: topCountry.country_id,
+            country_name: fullName,
             country_probability: topCountry.probability,
             created_at: new Date().toISOString()
         });
@@ -102,6 +109,79 @@ app.post('/api/profiles', async (req, res) => {
         res.status(500).json({ status: "error", message: "Internal Server Error", debug: error.message });
     }
 });
+
+app.get('/api/profiles/search', async (req, res) => {
+    try{
+        const {q, page = 1, limit = 10} = req.query;
+        if (!q) return res.status(400).json({ status: "error", message: "Query parameter 'q' is required" });
+
+        const query = q.toLowerCase();
+        const where = {};
+        let interpreted = false;
+
+        if(/\bmales?\b|\bmen\b/.test(query)){
+            where.gender = 'male';
+            interpreted = true;
+        } else if(/\bfemales?\b|\bwomen\b/.test(query)){
+            where.gender = 'female';
+            interpreted = true;
+        }
+
+        if (query.includes('young')) {
+            where.age = {[Op.gte]: 16, [Op.lte] : 24};
+            interpreted = true;
+        }
+
+        if (query.includes('adult')) { where.age_group = 'adult'; interpreted = true; }
+        if (query.includes('teenager')) { where.age_group = 'teenager'; interpreted = true; }
+
+        const aboveMatch = query.match(/(?:above|older than)\s+(\d+)/);
+        if (aboveMatch) {
+            where.age = { ...where.age, [Op.gt]: parseInt(aboveMatch[1])};
+            interpreted = true;
+        }
+
+        const belowMatch = query.match(/(?:below|younger than)\s+(\d+)/);
+        if (belowMatch) {
+            where.age = { ...where.age, [Op.lt]: parseInt(belowMatch[1])};
+            interpreted = true;
+        }
+
+        const countryMatch = query.match(/from\s+([a-zA-Z\s]+)/);
+        if (countryMatch) {
+            const countryName = countryMatch[1].trim();
+            const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
+            if (countryId) {
+                where.country_id = countryId;
+                interpreted = true;
+            }
+        }
+
+        if (!interpreted) {
+            return res.status(400).json({ status: "error", message: "Could not interpret the query" });
+        }
+
+        const limitNum = Math.min(Math.max(parseInt(limit), 1), 50);
+        const offset = (Math.max(parseInt(page), 1) - 1) * limitNum;
+
+        const {count, rows} = await Profile.findAndCountAll({
+            where,
+            limit: limitNum,
+            offset: offset,
+            order: [['created_at', 'DESC']]
+        });
+
+        return res.status(200).json({
+            status: "success",
+            page: parseInt(page),
+            limit: limitNum,
+            total: count,
+            data: rows
+        });
+    } catch(error) {
+        return res.status(500).json({ status: "error", message: "Internal Server Error" });
+    }
+})
 
 app.get('/api/profiles/:id', async (req, res) => {
     try {
@@ -122,24 +202,75 @@ app.get('/api/profiles/:id', async (req, res) => {
 
 app.get('/api/profiles', async (req, res) => {
     try {
-        const { gender, country_id, age_group } = req.query;
+        MAX_LIMIT = 50;
+
+        const { gender, country_id, age_group,
+            min_age, max_age,
+            min_gender_probability, max_gender_probability,
+            page = 1,
+            limit = 10,
+            sortBy = 'created_at',
+            order = 'ASC'
+        } = req.query;
+
+        const numericFields = { page, limit, min_age, max_age, min_gender_probability, max_gender_probability };
+        for (const [key, value] of Object.entries(numericFields)) {
+            if (value !== undefined && isNaN(value)) {
+                return res.status(422).json({ 
+                    status: "error", 
+                    message: `Invalid parameter type: ${key} must be a number` 
+                });
+            }
+        }
+
         const where = {};
 
         if (gender) where.gender = gender;
         if (country_id) where.country_id = country_id;
         if (age_group) where.age_group = age_group;
 
-        const profiles = await Profile.findAll({where});
+        if (min_age || max_age) {
+            where.age = {};
+            if (min_age) where.age[Op.gte] = parseInt(min_age);
+            if (max_age) where.age[Op.lte] = parseInt(max_age);
+        }
+
+        if (min_gender_probability || max_gender_probability) {
+            where.gender_probability = {};
+            if (min_gender_probability) where.gender_probability[Op.gte] = parseFloat(min_gender_probability);
+            if (max_gender_probability) where.gender_probability[Op.lte] = parseFloat(max_gender_probability);
+        }
+
+        const requestedLimit = parseInt(limit);
+        const limitNum = Math.min(Math.max(requestedLimit, 1), MAX_LIMIT);
+        const pageNum = parseInt(page);
+        const offset = (pageNum - 1) * limitNum;
+
+        const {count, rows: profiles} = await Profile.findAndCountAll({
+            where,
+            limit: limitNum,
+            offset: offset,
+            order: [[
+                ['age', 'created_at', 'gender_probability'].includes(sortBy) ? sortBy: 'createdAt', order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+            ]]
+        });
 
         return res.status(200).json({
             status: "success",
-            count: profiles.length,
+            page: pageNum,
+            limit: limitNum,
+            total: count,
             data: profiles.map(p => ({
                 id: p.id,
                 name: p.name,
                 gender: p.gender,
+                gender_probability: p.gender_probability,
                 age: p.age,
-                country_id: p.country_id
+                age_group: p.age_group,
+                country_id: p.country_id,
+                country_name: p.country_name,
+                country_probability: p.country_probability,
+                created_at: p.created_at
             }))
         });
     } catch (error) {
@@ -166,7 +297,7 @@ app.listen(PORT, '0.0.0.0', async () => {
     try {
         await sequelize.authenticate();
         console.log('Database connected.');
-        await sequelize.sync({ alter: true });
+        await sequelize.sync({ force: true });
         console.log(`Server is running on port ${PORT}`);
     } catch (error) {
         console.error('Unable to connect to the database:', error);

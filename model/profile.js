@@ -31,7 +31,7 @@ const Profile = sequelize.define('Profile', {
         }
     },
     gender_probability: {
-        type: DataTypes.STRING,
+        type: DataTypes.FLOAT,
         allowNull: true,
         validate: {
             min: 0,
@@ -57,7 +57,11 @@ const Profile = sequelize.define('Profile', {
         allowNull: true
     },
     country_id: {
-        type: DataTypes.STRING(3), // Stores ISO codes like 'US', 'GB', etc.
+        type: DataTypes.STRING(2), // Stores ISO codes like 'US', 'GB', etc.
+        allowNull: true
+    },
+    country_name: {
+        type: DataTypes.STRING,
         allowNull: true
     },
     country_probability: {
