@@ -17,7 +17,6 @@ app.use(express.json());
 app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
 app.get('/api/profiles/search', async (req, res) => {
-    console.log("--- SEARCH ROUTE ACCESSED ---"); // Look for this in Railway logs!
     try {
         const { q, page = 1, limit = 10 } = req.query;
         if (!q) return res.status(400).json({ status: "error", message: "Query 'q' is required" });
@@ -26,14 +25,14 @@ app.get('/api/profiles/search', async (req, res) => {
         const where = {};
         let interpreted = false;
 
-        // Gender Parsing
+        // Gender
         if (/\bmales?\b|\bmen\b/.test(query)) { where.gender = 'male'; interpreted = true; }
         else if (/\bfemales?\b|\bwomen\b/.test(query)) { where.gender = 'female'; interpreted = true; }
 
-        // Age Group Parsing
+        // Age Group
         if (query.includes('young')) { where.age = { [Op.gte]: 16, [Op.lte]: 24 }; interpreted = true; }
-        if (query.includes('adult')) { where.age_group = 'adult'; interpreted = true; }
-        if (query.includes('teenager')) { where.age_group = 'teenager'; interpreted = true; }
+        else if (query.includes('adult')) { where.age_group = 'adult'; interpreted = true; }
+        else if (query.includes('teenager')) { where.age_group = 'teenager'; interpreted = true; }
 
         // Comparisons
         const aboveMatch = query.match(/(?:above|older than)\s+(\d+)/);
@@ -43,28 +42,20 @@ app.get('/api/profiles/search', async (req, res) => {
             interpreted = true;
         }
 
-        // Country Parsing - Fixed with try/catch
+        // Country Parsing
         const countryMatch = query.match(/from\s+([a-zA-Z\s]+)/);
         if (countryMatch) {
-            try {
-                const countryName = countryMatch[1].trim();
-                const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
-                if (countryId) { 
-                    where.country_id = countryId.toUpperCase(); 
-                    interpreted = true; 
-                }
-            } catch (e) { console.error("ISO Country Error", e); }
+            const countryName = countryMatch[1].trim();
+            const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
+            if (countryId) { where.country_id = countryId.toUpperCase(); interpreted = true; }
         }
 
-        if (!interpreted) {
-            return res.status(400).json({ status: "error", message: "Uninterpretable query" });
-        }
+        if (!interpreted) return res.status(400).json({ status: "error", message: "Uninterpretable query" });
 
         const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
         const pageNum = Math.max(parseInt(page) || 1, 1);
 
-        // ACTUAL DB CALL
-        const result = await Profile.findAndCountAll({
+        const { count, rows } = await Profile.findAndCountAll({
             where,
             limit: limitNum,
             offset: (pageNum - 1) * limitNum,
@@ -75,86 +66,78 @@ app.get('/api/profiles/search', async (req, res) => {
             status: "success",
             page: pageNum,
             limit: limitNum,
-            total: result.count,
-            data: result.rows
+            total: count,
+            data: rows
         });
     } catch (error) {
-        // console.error("ID Route Error:", error.message);
-        console.error("DEBUG ERROR TRACE:");
-        console.error(error.stack);
-        res.status(500).json({
-            status: "error", 
-            message: "Internal Server Error",
-            dev_info: error.message, // This helps you see the error in Postman too
-            line: error.stack.split('\n')[1] 
-        });
+        console.error("Search Error:", error.stack);
+        return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
 
 app.get('/api/profiles', async (req, res) => {
     try {
-        const MAX_LIMIT = 50;
-        // 1. Get values from query string
-        let { page, limit, sortBy = 'created_at', order = 'ASC' } = req.query;
+        const { gender, country_id, age_group, min_age, max_age, min_gender_probability, max_gender_probability, page = 1, limit = 10, sortBy = 'created_at', order = 'ASC' } = req.query;
 
-        // 2. FORCE them to be integers right now
+        // Validation for sortBy
+        const allowedSort = ['age', 'created_at', 'gender_probability', 'country_probability'];
+        if (sortBy && !allowedSort.includes(sortBy.toLowerCase())) {
+            return res.status(400).json({ status: "error", message: "Invalid sortBy field" });
+        }
+
+        const where = {};
+        if (gender) where.gender = gender.toLowerCase();
+        if (country_id) where.country_id = country_id.toUpperCase();
+        if (age_group) where.age_group = age_group.toLowerCase();
+
+        if (min_age || max_age) {
+            where.age = {};
+            if (min_age) where.age[Op.gte] = parseInt(min_age);
+            if (max_age) where.age[Op.lte] = parseInt(max_age);
+        }
+
+        if (min_gender_probability || max_gender_probability) {
+            where.gender_probability = {};
+            if (min_gender_probability) where.gender_probability[Op.gte] = parseFloat(min_gender_probability);
+            if (max_gender_probability) where.gender_probability[Op.lte] = parseFloat(max_gender_probability);
+        }
+
+        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
         const pageNum = Math.max(parseInt(page) || 1, 1);
-        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), MAX_LIMIT);
-        const offset = (pageNum - 1) * limitNum;
-
-        // ... your filtering logic (where clause) ...
 
         const { count, rows } = await Profile.findAndCountAll({
-            where: {}, // (Add your filters here)
+            where,
             limit: limitNum,
-            offset: offset,
-            order: [[(['age', 'created_at'].includes(sortBy) ? sortBy : 'created_at'), 
-                    (order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC')]]
+            offset: (pageNum - 1) * limitNum,
+            order: [[sortBy, order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC']]
         });
 
-        // 3. THE ENVELOPE: This is exactly what the grader looks for
         return res.status(200).json({
             status: "success",
-            page: pageNum,    
-            limit: limitNum,  
-            total: count,     
-            data: rows        
+            page: pageNum,
+            limit: limitNum,
+            total: count,
+            data: rows
         });
-
     } catch (error) {
-        console.error("Internal Error:", error.stack); // Now showing line numbers!
+        console.error("List Error:", error.stack);
         res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
 
 app.get('/api/profiles/:id', async (req, res) => {
     const { id } = req.params;
-    if (id === 'search') {
-        return res.status(404).json({ 
-            status: "error", 
-            message: "Search route was missed. Check your query parameters." 
-        });
-    }
-    try {        
-        const profile = await Profile.findByPk(id);
-        if (!profile) {
-            return res.status(404).json({ status: "error", message: "Profile not found" });
-        }
 
-        return res.status(200).json({
-            status: "success",
-            data: profile
-        });
+    // This stops the word "search" from hitting the DB
+    if (id === 'search') return res.status(400).json({ status: "error", message: "Invalid search parameters" });
+
+    try {
+        const profile = await Profile.findByPk(id);
+        if (!profile) return res.status(404).json({ status: "error", message: "Profile not found" });
+        return res.status(200).json({ status: "success", data: profile });
     } catch (error) {
-        // console.error("ID Route Error:", error.message);
-        console.error("DEBUG ERROR TRACE:");
-        console.error(error.stack);
-        res.status(500).json({
-            status: "error", 
-            message: "Internal Server Error",
-            dev_info: error.message, // This helps you see the error in Postman too
-            line: error.stack.split('\n')[1] 
-        });
+        // This catches the 'invalid input syntax for type uuid'
+        return res.status(400).json({ status: "error", message: "Invalid UUID format" });
     }
 });
 
