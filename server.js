@@ -1,13 +1,11 @@
 const express = require('express');
 const axios = require('axios');
-const { v7: uuidv7 } = require('uuid'); 
 const cors = require('cors');
-const { Op} = require('sequelize');
+const { Op } = require('sequelize');
 const ISOcountries = require('i18n-iso-countries');
 ISOcountries.registerLocale(require("i18n-iso-countries/langs/en.json"));
 const sequelize = require('./config/sequelize');
 const Profile = require('./model/profile'); 
-const { parse } = require('node:path');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
@@ -16,34 +14,83 @@ const app = express();
 app.use(express.json());
 app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
+const MAX_LIMIT = 100;
+const ALLOWED_SORT_FIELDS = ['age', 'created_at', 'gender_probability', 'country_probability'];
+
+function parsePagination(pageRaw, limitRaw) {
+    const pageNum = Math.max(parseInt(pageRaw, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limitRaw, 10) || 10, 1), MAX_LIMIT);
+    return { pageNum, limitNum };
+}
+
+function buildPaginationEnvelope(count, pageNum, limitNum, data) {
+    const totalPages = count === 0 ? 0 : Math.ceil(count / limitNum);
+    return {
+        status: "success",
+        page: pageNum,
+        limit: limitNum,
+        total: count,
+        total_pages: totalPages,
+        has_next_page: pageNum < totalPages,
+        has_prev_page: pageNum > 1,
+        data
+    };
+}
+
 app.get('/api/profiles/search', async (req, res) => {
     try {
         const { q, page = 1, limit = 10 } = req.query;
         if (!q) return res.status(400).json({ status: "error", message: "Query 'q' is required" });
 
-        const query = q.toLowerCase();
+        const query = q.toLowerCase().trim();
         const where = {};
         let interpreted = false;
 
-        // Gender
-        if (/\bmales?\b|\bmen\b/.test(query)) { where.gender = 'male'; interpreted = true; }
-        else if (/\bfemales?\b|\bwomen\b/.test(query)) { where.gender = 'female'; interpreted = true; }
+        // Gender (support both male and female in one query without forcing one side)
+        const hasMale = /\b(male|males|man|men)\b/.test(query);
+        const hasFemale = /\b(female|females|woman|women)\b/.test(query);
+        if (hasMale || hasFemale) {
+            interpreted = true;
+            if (hasMale && !hasFemale) where.gender = 'male';
+            if (hasFemale && !hasMale) where.gender = 'female';
+        }
 
-        // Age Group
-        if (query.includes('young')) { where.age = { [Op.gte]: 16, [Op.lte]: 24 }; interpreted = true; }
-        else if (query.includes('adult')) { where.age_group = 'adult'; interpreted = true; }
-        else if (query.includes('teenager')) { where.age_group = 'teenager'; interpreted = true; }
+        // Age group keywords
+        if (/\byoung\b/.test(query)) { where.age = { [Op.gte]: 16, [Op.lte]: 24 }; interpreted = true; }
+        if (/\badults?\b/.test(query)) { where.age_group = 'adult'; interpreted = true; }
+        if (/\bteen(ager)?s?\b/.test(query)) { where.age_group = 'teenager'; interpreted = true; }
+        if (/\bchild(ren)?\b|\bkids?\b/.test(query)) { where.age_group = 'child'; interpreted = true; }
+        if (/\bsenior(s)?\b|\belderly\b/.test(query)) { where.age_group = 'senior'; interpreted = true; }
 
-        // Comparisons
-        const aboveMatch = query.match(/(?:above|older than)\s+(\d+)/);
+         // Age comparisons
+        const aboveMatch = query.match(/(?:above|over|older than|greater than)\s+(\d+)/);
+        const belowMatch = query.match(/(?:below|under|younger than|less than)\s+(\d+)/);
+        const minMatch = query.match(/(?:at least|min(?:imum)?)\s+(\d+)/);
+        const maxMatch = query.match(/(?:at most|max(?:imum)?)\s+(\d+)/);
+
         if (aboveMatch) {
-            const ageVal = parseInt(aboveMatch[1]);
-            where.age = { ...where.age, [Op.gt]: ageVal };
+            const ageVal = parseInt(aboveMatch[1], 10);
+            where.age = { ...(where.age || {}), [Op.gt]: ageVal };
+            interpreted = true;
+        }
+        if (belowMatch) {
+            const ageVal = parseInt(belowMatch[1], 10);
+            where.age = { ...(where.age || {}), [Op.lt]: ageVal };
+            interpreted = true;
+        }
+        if (minMatch) {
+            const ageVal = parseInt(minMatch[1], 10);
+            where.age = { ...(where.age || {}), [Op.gte]: ageVal };
+            interpreted = true;
+        }
+        if (maxMatch) {
+            const ageVal = parseInt(maxMatch[1], 10);
+            where.age = { ...(where.age || {}), [Op.lte]: ageVal };
             interpreted = true;
         }
 
         // Country Parsing
-        const countryMatch = query.match(/from\s+([a-zA-Z\s]+)/);
+        const countryMatch = query.match(/(?:from|in)\s+([a-zA-Z\s]+?)(?=\s+(?:above|over|older|greater|below|under|younger|less|at least|at most|min|max|and|or)\b|$)/);
         if (countryMatch) {
             const countryName = countryMatch[1].trim();
             const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
@@ -52,23 +99,16 @@ app.get('/api/profiles/search', async (req, res) => {
 
         if (!interpreted) return res.status(400).json({ status: "error", message: "Uninterpretable query" });
 
-        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
-        const pageNum = Math.max(parseInt(page) || 1, 1);
+        const { pageNum, limitNum } = parsePagination(page, limit);
 
         const { count, rows } = await Profile.findAndCountAll({
             where,
             limit: limitNum,
             offset: (pageNum - 1) * limitNum,
-            order: [['created_at', 'DESC']]
+            order: [['created_at', 'DESC'], ['id', 'ASC']]
         });
 
-        return res.status(200).json({
-            status: "success",
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total: count,
-            data: rows
-        });
+        return res.status(200).json(buildPaginationEnvelope(count, pageNum, limitNum, rows));
     } catch (error) {
         console.error("Search Error:", error.stack);
         return res.status(500).json({ status: "error", message: "Internal Server Error" });
@@ -77,12 +117,36 @@ app.get('/api/profiles/search', async (req, res) => {
 
 app.get('/api/profiles', async (req, res) => {
     try {
-        const { gender, country_id, age_group, min_age, max_age, min_gender_probability, max_gender_probability, page = 1, limit = 10, sortBy = 'created_at', order = 'ASC' } = req.query;
+        const {
+            gender,
+            country_id,
+            age_group,
+            min_age,
+            max_age,
+            min_gender_probability,
+            max_gender_probability,
+            min_country_probability,
+            max_country_probability,
+            gender_probability_min,
+            gender_probability_max,
+            country_probability_min,
+            country_probability_max,
+            page = 1,
+            limit = 10,
+            sort_by,
+            sortBy,
+            order = 'ASC'
+        } = req.query;
 
         // Validation for sortBy
-        const allowedSort = ['age', 'created_at', 'gender_probability', 'country_probability'];
-        if (sortBy && !allowedSort.includes(sortBy.toLowerCase())) {
-            return res.status(400).json({ status: "error", message: "Invalid sortBy field" });
+        const resolvedSortBy = (sort_by || sortBy || 'created_at').toLowerCase();
+        const resolvedOrder = String(order).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
+        if (!ALLOWED_SORT_FIELDS.includes(resolvedSortBy)) {
+            return res.status(400).json({
+                status: "error",
+                message: "Invalid sort_by field. Allowed fields: age, created_at, gender_probability, country_probability"
+            });
         }
 
         const where = {};
@@ -92,33 +156,37 @@ app.get('/api/profiles', async (req, res) => {
 
         if (min_age || max_age) {
             where.age = {};
-            if (min_age) where.age[Op.gte] = parseInt(min_age);
-            if (max_age) where.age[Op.lte] = parseInt(max_age);
+            if (min_age) where.age[Op.gte] = parseInt(min_age, 10);
+            if (max_age) where.age[Op.lte] = parseInt(max_age, 10);
         }
 
-        if (min_gender_probability || max_gender_probability) {
+        const resolvedMinGenderProbability = min_gender_probability ?? gender_probability_min;
+        const resolvedMaxGenderProbability = max_gender_probability ?? gender_probability_max;
+        const resolvedMinCountryProbability = min_country_probability ?? country_probability_min;
+        const resolvedMaxCountryProbability = max_country_probability ?? country_probability_max;
+
+        if (resolvedMinGenderProbability || resolvedMaxGenderProbability) {
             where.gender_probability = {};
-            if (min_gender_probability) where.gender_probability[Op.gte] = parseFloat(min_gender_probability);
-            if (max_gender_probability) where.gender_probability[Op.lte] = parseFloat(max_gender_probability);
+            if (resolvedMinGenderProbability) where.gender_probability[Op.gte] = parseFloat(resolvedMinGenderProbability);
+            if (resolvedMaxGenderProbability) where.gender_probability[Op.lte] = parseFloat(resolvedMaxGenderProbability);
         }
 
-        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
-        const pageNum = Math.max(parseInt(page) || 1, 1);
+        if (resolvedMinCountryProbability || resolvedMaxCountryProbability) {
+            where.country_probability = {};
+            if (resolvedMinCountryProbability) where.country_probability[Op.gte] = parseFloat(resolvedMinCountryProbability);
+            if (resolvedMaxCountryProbability) where.country_probability[Op.lte] = parseFloat(resolvedMaxCountryProbability);
+        }
+
+        const { pageNum, limitNum } = parsePagination(page, limit);
 
         const { count, rows } = await Profile.findAndCountAll({
             where,
             limit: limitNum,
             offset: (pageNum - 1) * limitNum,
-            order: [[sortBy, order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC']]
+            order: [[resolvedSortBy, resolvedOrder], ['id', 'ASC']]
         });
 
-        return res.status(200).json({
-            status: "success",
-            page: pageNum,
-            limit: limitNum,
-            total: count,
-            data: rows
-        });
+        return res.status(200).json(buildPaginationEnvelope(count, pageNum, limitNum, rows));
     } catch (error) {
         console.error("List Error:", error.stack);
         res.status(500).json({ status: "error", message: "Internal Server Error" });
