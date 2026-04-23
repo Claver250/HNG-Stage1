@@ -17,6 +17,7 @@ app.use(express.json());
 app.use(cors({origin: '*'})); // Allow CORS from any origin for testing purposes
 
 app.get('/api/profiles/search', async (req, res) => {
+    console.log("--- SEARCH ROUTE ACCESSED ---"); // Look for this in Railway logs!
     try {
         const { q, page = 1, limit = 10 } = req.query;
         if (!q) return res.status(400).json({ status: "error", message: "Query 'q' is required" });
@@ -42,27 +43,31 @@ app.get('/api/profiles/search', async (req, res) => {
             interpreted = true;
         }
 
-        // Country Parsing
+        // Country Parsing - Fixed with try/catch
         const countryMatch = query.match(/from\s+([a-zA-Z\s]+)/);
         if (countryMatch) {
-            const countryName = countryMatch[1].trim();
-            const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
-            if (countryId) { where.country_id = countryId; interpreted = true; }
+            try {
+                const countryName = countryMatch[1].trim();
+                const countryId = ISOcountries.getAlpha2Code(countryName, 'en');
+                if (countryId) { 
+                    where.country_id = countryId.toUpperCase(); 
+                    interpreted = true; 
+                }
+            } catch (e) { console.error("ISO Country Error", e); }
         }
 
         if (!interpreted) {
             return res.status(400).json({ status: "error", message: "Uninterpretable query" });
         }
 
-        // Pagination & Envelope Fix
-        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50); // MAX-CAP FIX
+        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
         const pageNum = Math.max(parseInt(page) || 1, 1);
-        const offset = (pageNum - 1) * limitNum;
 
-        const { count, rows } = await Profile.findAndCountAll({
+        // ACTUAL DB CALL
+        const result = await Profile.findAndCountAll({
             where,
             limit: limitNum,
-            offset: offset,
+            offset: (pageNum - 1) * limitNum,
             order: [['created_at', 'DESC']]
         });
 
@@ -70,71 +75,13 @@ app.get('/api/profiles/search', async (req, res) => {
             status: "success",
             page: pageNum,
             limit: limitNum,
-            total: count,
-            data: rows
+            total: result.count,
+            data: result.rows
         });
     } catch (error) {
-        console.error("Search Error:", error);
-        return res.status(500).json({ status: "error", message: "Internal Server Error" });
-    }
-});
-
-app.get('/api/profiles', async (req, res) => {
-    try {
-        const MAX_LIMIT = 50;
-        const { gender, country_id, age_group, min_age, max_age, min_gender_probability, max_gender_probability, page = 1, limit = 10, sortBy = 'created_at', order = 'ASC' } = req.query;
-
-        // 1. Validation for numeric types
-        const numericFields = { page, limit, min_age, max_age, min_gender_probability, max_gender_probability };
-        for (const [key, value] of Object.entries(numericFields)) {
-            if (value !== undefined && isNaN(Number(value))) {
-                return res.status(422).json({ status: "error", message: `Invalid parameter type: ${key} must be a number` });
-            }
-        }
-
-        const where = {};
-        // 2. Case-Insensitive Normalization
-        if (gender) where.gender = gender.toLowerCase();
-        if (country_id) where.country_id = country_id.toUpperCase();
-        if (age_group) where.age_group = age_group.toLowerCase();
-
-        if (min_age || max_age) {
-            where.age = {};
-            if (min_age) where.age[Op.gte] = parseInt(min_age);
-            if (max_age) where.age[Op.lte] = parseInt(max_age);
-        }
-
-        if (min_gender_probability || max_gender_probability) {
-            where.gender_probability = {};
-            if (min_gender_probability) where.gender_probability[Op.gte] = parseFloat(min_gender_probability);
-            if (max_gender_probability) where.gender_probability[Op.lte] = parseFloat(max_gender_probability);
-        }
-
-        // 3. Strict Pagination Numbers
-        const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), MAX_LIMIT);
-        const pageNum = Math.max(parseInt(page) || 1, 1);
-        const offset = (pageNum - 1) * limitNum;
-
-        const { count, rows: profiles } = await Profile.findAndCountAll({
-            where,
-            limit: limitNum,
-            offset: offset,
-            // 4. Fixed fallback to underscored 'created_at'
-            order: [
-                [ 
-                    (['age', 'created_at', 'gender_probability', 'country_probability'].includes(sortBy) ? sortBy : 'created_at'), (order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC') ]]
-        });
-
-        return res.status(200).json({
-            status: "success",
-            page: pageNum,
-            limit: limitNum,
-            total: count,
-            data: profiles
-        });
-    } catch (error) {
-        console.error("Internal Error:", error);
-        res.status(500).json({ status: "error", message: "Internal Server Error" });
+        console.error("CRITICAL SEARCH ERROR:", error.message);
+        // If PostgreSQL throws the UUID error here, we catch it!
+        return res.status(500).json({ status: "error", message: "Database Error: " + error.message });
     }
 });
 
@@ -158,7 +105,8 @@ app.get('/api/profiles/:id', async (req, res) => {
         });
     } catch (error) {
         console.error("ID Route Error:", error.message);
-        res.status(500).json({ status: "error", message: "Internal Server Error" });
+        return res.status(400).json({ status: "error", message: "Invalid ID format" });
+        // res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
 });
 
