@@ -139,14 +139,15 @@ app.get('/api/profiles', async (req, res) => {
 });
 
 app.get('/api/profiles/:id', async (req, res) => {
-    try {
-        if (id === 'search') {
+    const { id } = req.params;
+    if (id === 'search') {
         return res.status(404).json({ 
             status: "error", 
             message: "Search route was missed. Check your query parameters." 
         });
-    }        
-        const profile = await Profile.findByPk(req.params.id);
+    }
+    try {        
+        const profile = await Profile.findByPk(id);
         if (!profile) {
             return res.status(404).json({ status: "error", message: "Profile not found" });
         }
